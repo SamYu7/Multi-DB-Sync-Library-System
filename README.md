@@ -25,7 +25,4 @@
 3. 修改 `src/main/resources/application.yml.example` 为 `application.yml`，并填入你的数据库和邮箱配置。
 4. 运行 Spring Boot 启动类，访问 `http://localhost:8080/library`
 
-## 📸 系统截图展示
-*(如果你在 docx 文件夹里有截图，或者你想在网页上展示，可以在这里插入图片链接)*
-
 > **Note**: 本项目为中南大学《数据库系统实践》课程项目。
