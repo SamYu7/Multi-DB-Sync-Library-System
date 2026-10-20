@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>同步报表 - 移动端</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    /* 完整的CSS样式（你之前给我的） */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; background: #f5f7fa; padding: 15px; }
+    .header { text-align: center; padding: 20px 0; background: linear-gradient(135deg, #3498db, #2c3e50);
+             color: white; border-radius: 15px; margin-bottom: 20px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; }
+    .stat-card { background: white; border-radius: 15px; padding: 20px; text-align: center;
+                box-shadow: 0 3px 15px rgba(0,0,0,0.08); }
+    .stat-value { font-size: 28px; font-weight: bold; margin: 10px 0; }
+    .stat-label { font-size: 13px; color: #7f8c8d; }
+    .chart-card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 20px;
+                 box-shadow: 0 3px 15px rgba(0,0,0,0.08); }
+    canvas { width: 100% !important; height: 250px !important; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <h1>📱 同步报表</h1>
+  <div class="subtitle">实时监控数据同步状态</div>
+  <div class="last-update">更新于: <span id="updateTime">--:--</span></div>
+</div>
+
+<div class="container">
+  <!-- 统计卡片 -->
+  <div class="stats-grid" id="mobileStats">
+    <div class="stat-card total">
+      <div class="stat-label">总冲突</div>
+      <div class="stat-value" id="totalConflicts">42</div>
+      <div class="stat-trend">较昨日: +2</div>
+    </div>
+    <div class="stat-card unresolved">
+      <div class="stat-label">未处理</div>
+      <div class="stat-value" id="unresolvedCount">15</div>
+      <div class="stat-trend">需关注</div>
+    </div>
+    <div class="stat-card resolved">
+      <div class="stat-label">已解决</div>
+      <div class="stat-value" id="resolvedCount">27</div>
+      <div class="stat-trend">处理率: 64%</div>
+    </div>
+    <div class="stat-card three-db">
+      <div class="stat-label">三库冲突</div>
+      <div class="stat-value" id="threeDbConflicts">8</div>
+      <div class="stat-trend">高优先级</div>
+    </div>
+  </div>
+
+  <!-- 趋势图 -->
+  <div class="chart-card">
+    <h3>📈 冲突趋势</h3>
+    <canvas id="mobileTrendChart"></canvas>
+  </div>
+
+  <!-- 分布图 -->
+  <div class="chart-card">
+    <h3>📊 分布情况</h3>
+    <canvas id="mobileDistributionChart"></canvas>
+  </div>
+
+  <!-- 简单表格 -->
+  <div class="chart-card">
+    <h3>📋 最近冲突</h3>
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+        <tr style="background: #f8f9fa;">
+          <th style="padding: 10px; text-align: left;">冲突ID</th>
+          <th style="padding: 10px; text-align: left;">表名</th>
+          <th style="padding: 10px; text-align: left;">状态</th>
+        </tr>
+        </thead>
+        <tbody id="conflictTable">
+        <tr><td>CONF_001</td><td>books</td><td>⚠️ 未解决</td></tr>
+        <tr><td>CONF_002</td><td>book_copies</td><td>✅ 已解决</td></tr>
+        <tr><td>CONF_003</td><td>users</td><td>⚠️ 未解决</td></tr>
+        <tr><td>CONF_004</td><td>borrow_records</td><td>✅ 已解决</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 模拟数据
+  const mockData = {
+      totalConflicts: 42,
+      unresolvedCount: 15,
+      resolvedCount: 27,
+      threeDbConflicts: 8
+  };
+
+  // 初始化图表
+  function initCharts() {
+      // 趋势图
+      const trendCtx = document.getElementById('mobileTrendChart').getContext('2d');
+      new Chart(trendCtx, {
+          type: 'line',
+          data: {
+              labels: ['1/9', '1/10', '1/11', '1/12', '1/13', '1/14', '今天'],
+              datasets: [{
+                  label: '冲突数',
+                  data: [12, 18, 8, 22, 15, 10, 16],
+                  borderColor: '#3498db',
+                  backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                  tension: 0.4,
+                  fill: true
+              }]
+          },
+          options: {
+              responsive: true,
+              plugins: { legend: { display: false } }
+          }
+      });
+
+      // 分布图
+      const distCtx = document.getElementById('mobileDistributionChart').getContext('2d');
+      new Chart(distCtx, {
+          type: 'doughnut',
+          data: {
+              labels: ['图书表', '副本表', '用户表', '借阅表'],
+              datasets: [{
+                  data: [40, 30, 20, 10],
+                  backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#f39c12']
+              }]
+          }
+      });
+  }
+
+  // 更新时间
+  document.getElementById('updateTime').textContent =
+      new Date().getHours().toString().padStart(2, '0') + ':' +
+      new Date().getMinutes().toString().padStart(2, '0');
+
+  // 页面加载完成
+  document.addEventListener('DOMContentLoaded', initCharts);
+</script>
+</body>
+</html>

@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <title>图书管理系统 - 冲突管理</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    .permission-hint {
+      font-size: 0.85em;
+      margin-left: 5px;
+      opacity: 0.7;
+    }
+    .no-permission {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/library/">图书管理系统</a>
+    <div class="navbar-nav me-auto">
+      <a class="nav-link" href="/library/books">图书管理</a>
+
+      <!-- 冲突管理链接 - 只有管理员可见 -->
+      <a class="nav-link active" href="/library/conflicts-page"
+         th:if="${#authorization.expression('hasAnyRole(''LIB_ADMIN'', ''SYS_ADMIN'')')}">
+        冲突管理
+      </a>
+
+      <a class="nav-link" href="/library/test-conflict">冲突测试</a>
+    </div>
+    <div class="navbar-nav">
+      <span class="nav-link text-light">
+        👤 欢迎，<span th:text="${#authentication.name}">用户</span>
+        <small class="d-block">
+          <span th:if="${#authorization.expression('hasRole(''SYS_ADMIN'')')}" class="badge bg-danger">系统管理员</span>
+          <span th:if="${#authorization.expression('hasRole(''LIB_ADMIN'')')}" class="badge bg-warning">分馆管理员</span>
+          <span th:if="${#authorization.expression('hasRole(''READER'')')}" class="badge bg-info">普通读者</span>
+        </small>
+      </span>
+      <form th:action="@{/logout}" method="post" class="d-inline">
+        <button type="submit" class="btn btn-outline-light btn-sm">退出登录</button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<div class="container mt-4">
+  <h2><i class="fas fa-exclamation-triangle"></i> 数据冲突管理</h2>
+
+  <!-- 权限提示区域 -->
+  <div class="alert alert-info" th:if="${#authorization.expression('hasRole(''READER'')')}">
+    <i class="fas fa-info-circle"></i>
+    您是普通读者，没有权限访问冲突管理页面。
+  </div>
+
+  <!-- 管理员内容区域 -->
+  <div th:if="${#authorization.expression('hasAnyRole(''LIB_ADMIN'', ''SYS_ADMIN'')')}">
+
+    <div class="alert alert-warning" th:if="${#authorization.expression('hasRole(''LIB_ADMIN'')')}">
+      <i class="fas fa-info-circle"></i>
+      您是分馆管理员，可以查看冲突但不能解决。如需解决请切换至系统管理员账户。
+    </div>
+
+    <div class="alert alert-success" th:if="${#authorization.expression('hasRole(''SYS_ADMIN'')')}">
+      <i class="fas fa-check-circle"></i>
+      您是系统管理员，拥有所有操作权限。
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <div class="row">
+          <div class="col-md-6">
+            <div class="btn-group" role="group">
+              <button class="btn btn-primary" onclick="loadConflicts()">
+                <i class="fas fa-sync-alt"></i> 刷新冲突列表
+              </button>
+              <button class="btn btn-info" onclick="loadResolvedConflicts()">
+                <i class="fas fa-check-circle"></i> 查看已处理
+              </button>
+
+              <!-- 清理按钮 - 仅系统管理员可见 -->
+              <button class="btn btn-danger"
+                      th:if="${#authorization.expression('hasRole(''SYS_ADMIN'')')}"
+                      onclick="clearAllConflicts()">
+                <i class="fas fa-trash"></i> 清理已处理
+              </button>
+            </div>
+          </div>
+          <div class="col-md-6 text-end">
+            <div class="btn-group" role="group">
+              <button class="btn btn-outline-secondary" onclick="showStatistics()">
+                <i class="fas fa-chart-bar"></i> 统计
+              </button>
+              <button class="btn btn-outline-warning" onclick="exportConflicts()">
+                <i class="fas fa-download"></i> 导出
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <!-- 状态筛选器 -->
+        <div class="row mb-3">
+          <div class="col-md-12">
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-danger active" onclick="filterConflicts('unresolved')">
+                未处理 <span class="badge bg-light text-dark" id="unresolvedCount">0</span>
+              </button>
+              <button type="button" class="btn btn-success" onclick="filterConflicts('resolved')">
+                已处理 <span class="badge bg-light text-dark" id="resolvedCount">0</span>
+              </button>
+              <button type="button" class="btn btn-secondary" onclick="filterConflicts('all')">
+                全部 <span class="badge bg-light text-dark" id="totalCount">0</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 冲突表格 -->
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead class="table-dark">
+            <tr>
+              <th>冲突ID</th>
+              <th>数据ID</th>
+              <th>表名</th>
+              <th>冲突源</th>
+              <th>发生时间</th>
+              <th>处理状态</th>
+              <th>操作</th>
+            </tr>
+            </thead>
+            <tbody id="conflictTableBody">
+            <!-- 动态填充 -->
+            <tr>
+              <td colspan="7" class="text-center text-muted py-4">
+                <i class="fas fa-spinner fa-spin fa-2x mb-2"></i><br>
+                正在加载冲突数据...
+              </td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 分页控制 -->
+        <div class="row mt-3">
+          <div class="col-md-6">
+            <small class="text-muted" id="conflictSummary">正在加载冲突列表...</small>
+          </div>
+          <div class="col-md-6 text-end">
+            <div class="btn-group" role="group">
+              <button class="btn btn-outline-secondary btn-sm" onclick="prevPage()">
+                <i class="fas fa-chevron-left"></i> 上一页
+              </button>
+              <span class="btn btn-light btn-sm" id="currentPage">1</span>
+              <button class="btn btn-outline-secondary btn-sm" onclick="nextPage()">
+                下一页 <i class="fas fa-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 普通读者显示无权限内容 -->
+  <div th:if="${#authorization.expression('hasRole(''READER'')')}">
+    <div class="card">
+      <div class="card-body text-center">
+        <i class="fas fa-lock fa-4x text-muted mb-3"></i>
+        <h4 class="text-muted">权限不足</h4>
+        <p class="text-muted">您没有权限访问冲突管理页面，请联系管理员。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 冲突详情模态框 -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">冲突详情</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="conflictDetailContent">
+          <!-- 动态加载 -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 解决方案模态框 -->
+<div class="modal fade" id="resolveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">解决冲突</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="resolveContent">
+          <!-- 动态加载 -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+<script>
+  // 全局变量
+  let allConflicts = [];
+  let currentPage = 1;
+  const pageSize = 10;
+  let currentFilter = 'unresolved';
+
+  // 获取当前用户角色
+  function getCurrentUserRoles() {
+    const badges = document.querySelectorAll('.badge');
+    const roles = [];
+
+    badges.forEach(badge => {
+      const text = badge.textContent.trim();
+      if (text === '系统管理员') roles.push('SYS_ADMIN');
+      if (text === '分馆管理员') roles.push('LIB_ADMIN');
+      if (text === '普通读者') roles.push('READER');
+    });
+
+    return roles;
+  }
+
+  // 检查权限
+  function checkPermission(requiredRole) {
+    const userRoles = getCurrentUserRoles();
+    return userRoles.includes(requiredRole);
+  }
+
+  // 加载冲突列表
+  function loadConflicts() {
+    const tbody = document.getElementById('conflictTableBody');
+
+    // 显示加载状态
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">加载中...</span>
+          </div>
+          <div class="mt-2 text-muted">正在加载冲突数据...</div>
+        </td>
+      </tr>
+    `;
+
+    fetch('/library/api/conflicts/unresolved')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log('冲突列表:', data);
+        allConflicts = data.conflicts || data || [];
+        updateConflictCounts();
+        renderConflicts(currentFilter);
+      })
+      .catch(error => {
+        console.error('加载冲突列表失败:', error);
+
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="text-center text-danger py-4">
+              <i class="fas fa-exclamation-triangle fa-2x mb-2"></i><br>
+              <strong>加载失败</strong><br>
+              <div class="small text-muted">${error.message}</div>
+            </td>
+          </tr>
+        `;
+
+        showError('加载失败: ' + error.message);
+      });
+  }
+
+  // 更新冲突计数
+  function updateConflictCounts() {
+    const unresolved = allConflicts.filter(c => !c.resolved).length;
+    const resolved = allConflicts.filter(c => c.resolved).length;
+    const total = allConflicts.length;
+
+    document.getElementById('unresolvedCount').textContent = unresolved;
+    document.getElementById('resolvedCount').textContent = resolved;
+    document.getElementById('totalCount').textContent = total;
+
+    // 更新摘要
+    const summary = document.getElementById('conflictSummary');
+    summary.textContent = `共 ${total} 条冲突记录（${unresolved} 个未处理，${resolved} 个已处理）`;
+  }
+
+  // 渲染冲突列表
+  function renderConflicts(filter = 'unresolved') {
+    currentFilter = filter;
+    const tbody = document.getElementById('conflictTableBody');
+    tbody.innerHTML = '';
+
+    // 获取用户权限
+    const isSysAdmin = checkPermission('SYS_ADMIN');
+    const isLibAdmin = checkPermission('LIB_ADMIN');
+
+    // 筛选冲突
+    let filteredConflicts = [];
+    switch (filter) {
+      case 'unresolved':
+        filteredConflicts = allConflicts.filter(c => !c.resolved);
+        break;
+      case 'resolved':
+        filteredConflicts = allConflicts.filter(c => c.resolved);
+        break;
+      case 'all':
+        filteredConflicts = allConflicts;
+        break;
+    }
+
+    if (filteredConflicts.length === 0) {
+      const row = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 7;
+      td.className = 'text-center text-muted py-4';
+      td.innerHTML = `<i class="fas fa-check-circle fa-2x mb-2"></i><br>没有找到冲突记录`;
+      row.appendChild(td);
+      tbody.appendChild(row);
+      return;
+    }
+
+    // 分页
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    const pageConflicts = filteredConflicts.slice(start, end);
+
+    // 更新分页显示
+    document.getElementById('currentPage').textContent = currentPage;
+
+    pageConflicts.forEach(conflict => {
+      const row = document.createElement('tr');
+
+      // 基础信息
+      const conflictId = conflict.log_id || conflict.logId || conflict.id || 'N/A';
+      const dataId = conflict.data_id || conflict.dataId || 'N/A';
+      const tableName = conflict.table_name || conflict.tableName || '未知';
+      const sourceDb = conflict.source_db || '未知';
+      const targetDb = conflict.target_db || '未知';
+      const syncTime = conflict.sync_time || conflict.syncTime;
+
+      const cells = [
+        conflictId,
+        dataId,
+        tableName,
+        sourceDb + ' → ' + targetDb,
+        syncTime ? new Date(syncTime).toLocaleString() : '未知'
+      ];
+
+      cells.forEach(text => {
+        const td = document.createElement('td');
+        td.textContent = text;
+        row.appendChild(td);
+      });
+
+      // 处理状态
+      const statusTd = document.createElement('td');
+      if (conflict.resolved) {
+        statusTd.innerHTML = `
+          <span class="badge bg-success">
+            <i class="fas fa-check"></i> 已处理
+          </span>
+          <div class="small text-muted">
+            ${conflict.resolved_by ? '处理人: ' + conflict.resolved_by : ''}
+            ${conflict.resolved_time ? '<br>时间: ' + new Date(conflict.resolved_time).toLocaleDateString() : ''}
+          </div>
+        `;
+      } else {
+        statusTd.innerHTML = `
+          <span class="badge bg-danger">
+            <i class="fas fa-exclamation"></i> 待处理
+          </span>
+        `;
+      }
+      row.appendChild(statusTd);
+
+      // 操作列 - 根据权限显示不同按钮
+      const actionTd = document.createElement('td');
+
+      if (conflict.resolved) {
+        // 已处理的冲突操作
+        actionTd.innerHTML = `
+          <button class="btn btn-sm btn-outline-info me-1" onclick="showConflictDetail('${conflictId}')">
+            <i class="fas fa-eye"></i> 查看
+          </button>
+          ${isSysAdmin ? `
+          <button class="btn btn-sm btn-outline-warning" onclick="reopenConflict('${conflictId}')">
+            <i class="fas fa-redo"></i> 重新打开
+          </button>
+          ` : ''}
+        `;
+      } else {
+        // 未处理的冲突操作
+        actionTd.innerHTML = `
+          <div class="btn-group btn-group-sm" role="group">
+            <button class="btn btn-info" onclick="showConflictDetail('${conflictId}')">
+              <i class="fas fa-info-circle"></i> 详情
+            </button>
+            ${isSysAdmin ? `
+            <button class="btn btn-success" onclick="showResolveOptions('${conflictId}')">
+              <i class="fas fa-hammer"></i> 解决
+            </button>
+            <button class="btn btn-warning" onclick="markAsResolved('${conflictId}')">
+              <i class="fas fa-check"></i> 标记
+            </button>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      row.appendChild(actionTd);
+      tbody.appendChild(row);
+    });
+  }
+
+  // 显示冲突详情
+  function showConflictDetail(conflictId) {
+    const conflict = allConflicts.find(c =>
+      (c.log_id || c.logId || c.id) === conflictId
+    );
+
+    if (!conflict) {
+      showError('找不到冲突记录');
+      return;
+    }
+
+    let html = `
+      <h5>冲突ID: ${conflict.log_id || conflict.logId || conflict.id}</h5>
+      <hr>
+      <table class="table table-bordered">
+        <tr><th width="150">表名</th><td>${conflict.table_name || conflict.tableName}</td></tr>
+        <tr><th>数据ID</th><td>${conflict.data_id || conflict.dataId}</td></tr>
+        <tr><th>冲突源</th><td>${conflict.source_db} → ${conflict.target_db}</td></tr>
+        <tr><th>发生时间</th><td>${conflict.sync_time ? new Date(conflict.sync_time).toLocaleString() : '未知'}</td></tr>
+        <tr><th>处理状态</th><td>${conflict.resolved ?
+          `<span class="badge bg-success">已处理</span>` :
+          `<span class="badge bg-danger">未处理</span>`}</td></tr>
+    `;
+
+    if (conflict.resolved) {
+      html += `
+        <tr><th>处理人</th><td>${conflict.resolved_by || '未知'}</td></tr>
+        <tr><th>处理时间</th><td>${conflict.resolved_time ? new Date(conflict.resolved_time).toLocaleString() : '未知'}</td></tr>
+        <tr><th>解决方案</th><td>${conflict.resolution_action || '未指定'}</td></tr>
+      `;
+    }
+
+    html += `</table>`;
+
+    // 显示冲突详情
+    if (conflict.conflict_detail) {
+      html += `
+        <h6 class="mt-3">冲突详情:</h6>
+        <div class="alert alert-warning">
+          <pre style="white-space: pre-wrap; font-size: 0.9em;">${conflict.conflict_detail}</pre>
+        </div>
+      `;
+    }
+
+    document.getElementById('conflictDetailContent').innerHTML = html;
+    new bootstrap.Modal(document.getElementById('detailModal')).show();
+  }
+
+  // 显示解决选项（仅系统管理员）
+  function showResolveOptions(conflictId) {
+    if (!checkPermission('SYS_ADMIN')) {
+      showError('权限不足：只有系统管理员可以解决冲突');
+      return;
+    }
+
+    const conflict = allConflicts.find(c =>
+      (c.log_id || c.logId || c.id) === conflictId
+    );
+
+    if (!conflict) {
+      showError('找不到冲突记录');
+      return;
+    }
+
+    const currentUser = document.querySelector('[th\\:text="${#authentication.name}"]')?.textContent || 'admin';
+
+    const html = `
+      <form id="resolveForm">
+        <input type="hidden" name="conflictId" value="${conflictId}">
+        <input type="hidden" name="resolvedBy" value="${currentUser}">
+
+        <div class="mb-3">
+          <label class="form-label">解决策略</label>
+          <select class="form-select" name="strategy" required>
+            <option value="">请选择解决策略</option>
+            <option value="USE_SOURCE">使用源数据 (${conflict.source_db})</option>
+            <option value="USE_TARGET">使用目标数据 (${conflict.target_db})</option>
+            <option value="USE_LATEST">使用最新数据</option>
+          </select>
+          <div class="form-text">
+            <strong>USE_SOURCE:</strong> 用源数据库的数据覆盖其他数据库<br>
+            <strong>USE_TARGET:</strong> 保留目标数据库的数据<br>
+            <strong>USE_LATEST:</strong> 使用修改时间最新的数据
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">备注说明</label>
+          <textarea class="form-control" name="resolutionAction" rows="3"
+                    placeholder="输入处理备注..."></textarea>
+        </div>
+
+        <div class="alert alert-info">
+          <i class="fas fa-info-circle"></i>
+          解决冲突将同步三个数据库的数据，请谨慎操作。
+        </div>
+      </form>
+    `;
+
+    document.getElementById('resolveContent').innerHTML = html;
+    const modal = new bootstrap.Modal(document.getElementById('resolveModal'));
+
+    // 表单提交处理
+    const resolveForm = document.getElementById('resolveForm');
+    resolveForm.onsubmit = function(e) {
+      e.preventDefault();
+      const formData = new FormData(resolveForm);
+      const request = {};
+      formData.forEach((value, key) => request[key] = value);
+
+      resolveConflict(request, modal);
+    };
+
+    // 添加提交按钮
+    const modalContent = document.querySelector('#resolveModal .modal-content');
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+    footer.innerHTML = `
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+      <button type="submit" class="btn btn-primary" form="resolveForm">确认解决</button>
+    `;
+    modalContent.appendChild(footer);
+
+    modal.show();
+  }
+
+  // 解决冲突
+  function resolveConflict(request, modal) {
+    fetch('/library/conflict-resolution/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    })
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        showSuccess('冲突解决成功！');
+        modal.hide();
+        loadConflicts(); // 刷新列表
+      } else {
+        showError('解决失败: ' + (result.message || result.error));
+      }
+    })
+    .catch(error => {
+      showError('请求失败: ' + error.message);
+    });
+  }
+
+  // 标记为已处理（仅系统管理员）
+  function markAsResolved(conflictId) {
+    if (!checkPermission('SYS_ADMIN')) {
+      showError('权限不足：只有系统管理员可以标记冲突为已处理');
+      return;
+    }
+
+    const currentUser = document.querySelector('[th\\:text="${#authentication.name}"]')?.textContent || 'admin';
+
+    if (confirm('确定要标记此冲突为已处理吗？\n这不会同步数据，仅标记状态。')) {
+      const request = {
+        conflictId: conflictId,
+        strategy: 'USE_TARGET',
+        resolvedBy: currentUser,
+        resolutionAction: '手动标记为已处理'
+      };
+
+      fetch('/library/conflict-resolution/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request)
+      })
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
+          showSuccess('冲突已标记为已处理');
+          loadConflicts();
+        } else {
+          showError('标记失败: ' + (result.message || result.error));
+        }
+      })
+      .catch(error => {
+        showError('请求失败: ' + error.message);
+      });
+    }
+  }
+
+  // 重新打开冲突
+  function reopenConflict(conflictId) {
+    if (!checkPermission('SYS_ADMIN')) {
+      showError('权限不足：只有系统管理员可以重新打开冲突');
+      return;
+    }
+
+    if (confirm('确定要重新打开此冲突吗？')) {
+      fetch('/library/api/conflicts/reopen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conflictId: conflictId })
+      })
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
+          showSuccess('冲突已重新打开');
+          loadConflicts();
+        } else {
+          showError('重新打开失败: ' + (result.message || result.error));
+        }
+      })
+      .catch(error => {
+        showError('请求失败: ' + error.message);
+      });
+    }
+  }
+
+  // 筛选冲突
+  function filterConflicts(filter) {
+    // 更新按钮状态
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+
+    renderConflicts(filter);
+  }
+
+  // 分页控制
+  function prevPage() {
+    if (currentPage > 1) {
+      currentPage--;
+      renderConflicts(currentFilter);
+    }
+  }
+
+  function nextPage() {
+    const filteredConflicts = getFilteredConflicts();
+    const totalPages = Math.ceil(filteredConflicts.length / pageSize);
+
+    if (currentPage < totalPages) {
+      currentPage++;
+      renderConflicts(currentFilter);
+    }
+  }
+
+  function getFilteredConflicts() {
+    switch (currentFilter) {
+      case 'unresolved':
+        return allConflicts.filter(c => !c.resolved);
+      case 'resolved':
+        return allConflicts.filter(c => c.resolved);
+      case 'all':
+        return allConflicts;
+      default:
+        return allConflicts;
+    }
+  }
+
+  // 其他功能函数
+  function loadResolvedConflicts() {
+    // 这里需要添加获取已处理冲突的API
+    showInfo('已处理冲突功能待实现');
+  }
+
+  function clearAllConflicts() {
+    if (!checkPermission('SYS_ADMIN')) {
+      showError('权限不足：只有系统管理员可以清理冲突');
+      return;
+    }
+
+    if (confirm('确定要清理所有已处理的冲突记录吗？\n这将删除所有已标记为已处理的冲突。')) {
+      fetch('/library/api/conflicts/clear-resolved', {
+        method: 'DELETE'
+      })
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
+          showSuccess('已清理' + result.deletedCount + '条已处理冲突');
+          loadConflicts();
+        } else {
+          showError('清理失败: ' + result.message);
+        }
+      })
+      .catch(error => {
+        showError('请求失败: ' + error.message);
+      });
+    }
+  }
+
+  function showStatistics() {
+    fetch('/library/reports/daily?date=' + new Date().toISOString().slice(0,10))
+      .then(response => response.json())
+      .then(data => {
+        let message = '📊 冲突统计报表\n\n';
+        message += '📅 日期: ' + (data.date || '今日') + '\n';
+        message += '🚨 未处理冲突: ' + (data.unresolvedCount || 0) + ' 个\n';
+        message += '✅ 已处理冲突: ' + ((data.total || 0) - (data.unresolvedCount || 0)) + ' 个\n';
+
+        if (data.tableStats && data.tableStats.length > 0) {
+          message += '\n📋 按表统计:\n';
+          data.tableStats.forEach(stat => {
+            message += `  ${stat[0]}: ${stat[1]} 个\n`;
+          });
+        }
+
+        alert(message);
+      })
+      .catch(error => {
+        console.error('获取统计失败:', error);
+        showError('获取统计失败: ' + error.message);
+      });
+  }
+
+  function exportConflicts() {
+    const dataStr = JSON.stringify(allConflicts, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+
+    const exportFileDefaultName = `conflicts_${new Date().toISOString().slice(0,10)}.json`;
+
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  }
+
+  // 工具函数
+  function showSuccess(message) {
+    alert('✅ ' + message);
+  }
+
+  function showError(message) {
+    alert('❌ ' + message);
+  }
+
+  function showInfo(message) {
+    alert('ℹ️ ' + message);
+  }
+
+  // 页面加载时初始化
+  document.addEventListener('DOMContentLoaded', function() {
+    const userRoles = getCurrentUserRoles();
+
+    // 如果是普通读者（且没有管理员权限），显示权限不足
+    if (userRoles.includes('READER') && !userRoles.includes('LIB_ADMIN') && !userRoles.includes('SYS_ADMIN')) {
+      const container = document.querySelector('.container');
+      container.innerHTML = `
+        <div class="card mt-5">
+          <div class="card-body text-center">
+            <i class="fas fa-lock fa-4x text-muted mb-3"></i>
+            <h3 class="text-muted">权限不足</h3>
+            <p class="text-muted">您没有权限访问冲突管理页面</p>
+            <p class="text-muted small">只有管理员可以访问此页面</p>
+            <a href="/library/books" class="btn btn-primary mt-3">
+              <i class="fas fa-arrow-left"></i> 返回图书管理
+            </a>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    // 管理员用户，加载数据
+    loadConflicts();
+  });
+</script>
+</body>
+</html>

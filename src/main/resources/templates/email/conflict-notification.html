@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>数据同步冲突告警</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #dc3545;
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            border-left: 4px solid #dc3545;
+        }
+        .detail-box {
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .label {
+            font-weight: bold;
+            color: #495057;
+        }
+        .value {
+            color: #212529;
+        }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h2>🚨 数据同步冲突告警</h2>
+    <p th:text="${applicationName} + ' 系统检测到数据库同步冲突'"></p>
+</div>
+
+<div class="content">
+    <h3>📋 冲突信息</h3>
+    <div class="detail-box">
+        <p><span class="label">冲突ID：</span> <span class="value" th:text="${conflict.logId}"></span></p>
+        <p><span class="label">表名：</span> <span class="value" th:text="${conflict.tableName}"></span></p>
+        <p><span class="label">数据ID：</span> <span class="value" th:text="${conflict.dataId}"></span></p>
+        <p><span class="label">冲突源：</span>
+            <span class="value" th:text="${conflict.sourceDb} + ' → ' + ${conflict.targetDb}"></span></p>
+        <p><span class="label">发生时间：</span> <span class="value" th:text="${conflictTime}"></span></p>
+    </div>
+
+    <h3>📝 冲突详情</h3>
+    <div class="detail-box">
+        <pre style="white-space: pre-wrap; font-family: monospace;" th:text="${conflict.conflictDetail}"></pre>
+    </div>
+
+    <h3>🚀 立即处理</h3>
+    <p>请立即登录系统处理此冲突，避免数据不一致问题扩大。</p>
+    <a th:href="${systemUrl} + '/conflicts-page'" class="button">
+        前往冲突管理页面
+    </a>
+
+    <div class="alert" style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0;">
+        <strong>💡 处理建议：</strong>
+        <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>查看冲突详情，了解具体差异</li>
+            <li>根据业务需求选择合适的解决策略</li>
+            <li>及时解决避免影响其他业务操作</li>
+            <li>处理后检查数据一致性</li>
+        </ul>
+    </div>
+</div>
+
+<div class="footer">
+    <p>此邮件由 <span th:text="${applicationName}"></span> 系统自动发送，请勿直接回复。</p>
+    <p>如需帮助，请联系系统管理员。</p>
+    <p th:text="'发送时间：' + ${#temporals.format(#temporals.createNow(), 'yyyy-MM-dd HH:mm:ss')}"></p>
+</div>
+</body>
+</html>

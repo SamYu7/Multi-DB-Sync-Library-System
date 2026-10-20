@@ -1,0 +1,75 @@
+/* 报表通用样式 */
+.report-container {
+    padding: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* 图表卡片 */
+.chart-wrapper {
+    background: white;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: transform 0.3s ease;
+}
+
+.chart-wrapper:hover {
+    transform: translateY(-2px);
+}
+
+/* 响应式图表 */
+.chart-responsive {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+/* 统计卡片动画 */
+.stat-card {
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+/* 表格样式增强 */
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0,0,0,.02);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(52, 152, 219, 0.1);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+    .report-container {
+        padding: 10px;
+    }
+
+    .chart-wrapper {
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+
+    .chart-responsive {
+        height: 250px;
+    }
+}
+
+/* 打印样式 */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    .chart-wrapper {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+}

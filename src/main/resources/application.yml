@@ -1,0 +1,87 @@
+spring:
+  application:
+    name: library-system
+
+  security:
+    user:
+      name: admin
+      password: your_admin_password  # 系统登录密码，请自行修改
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/library_system?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT%2B8
+    username: your_db_username     # 改成你的本地测试账号
+    password: your_db_password     # 改成你的本地测试密码
+    hikari:
+      connection-timeout: 30000
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      max-lifetime: 1200000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    database-platform: org.hibernate.dialect.MySQL8Dialect
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  # 邮件配置 - 注意这里缩进是2个空格
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: your_email@qq.com   
+    password: your_smtp_auth_code
+    protocol: smtp
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true  # 开启SSL
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+  thymeleaf:
+    cache: false
+    mode: HTML
+    encoding: UTF-8
+    prefix: classpath:/templates/
+    suffix: .html
+
+server:
+  port: 8080
+  servlet:
+    context-path: /library
+
+# 自定义配置
+library:
+  sync:
+    enabled: false
+    realtime-enabled: false
+
+  # 邮件配置 - 注意这里要和 sync 对齐（2个空格缩进）
+  email:
+    enabled: true  # 启用邮件功能
+    admin-email: admin@example.com  # 管理员邮箱，改成你的QQ邮箱
+    from-email: your_email@qq.com  # 发件人邮箱
+    conflict-subject: "[图书管理系统] 数据同步冲突告警"
+    conflict-notification-enabled: true  # 添加这行
+
+  system:
+    version: "1.0.0"
+    name: "图书管理系统"
+
+logging:
+  level:
+    com.library: DEBUG
+    org.springframework.jdbc: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    

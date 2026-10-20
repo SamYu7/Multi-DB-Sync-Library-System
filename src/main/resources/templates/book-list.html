@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>图书列表 - 图书馆系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .book-card {
+            transition: transform 0.2s;
+            height: 100%;
+        }
+        .book-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .status-available {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-borrowed {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .search-box {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/library/">图书管理系统</a>
+        <div class="navbar-nav me-auto">
+            <a class="nav-link active" href="/library/book-list">图书列表</a>
+            <a class="nav-link" href="/library/books">图书管理</a>
+            <a class="nav-link" href="/library/conflicts-page">冲突管理</a>
+            <a class="nav-link" href="/library/test-conflict">冲突测试</a>
+        </div>
+        <div class="navbar-nav">
+            <span class="nav-link text-light">
+                👤 欢迎，<span th:text="${#authentication.name}">用户</span>
+            </span>
+            <form th:action="@{/logout}" method="post" class="d-inline">
+                <button type="submit" class="btn btn-outline-light btn-sm">退出登录</button>
+            </form>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <h2>📚 图书列表</h2>
+    <p class="text-muted">浏览图书馆所有书籍，支持多种搜索方式</p>
+
+    <!-- 搜索区域 -->
+    <div class="search-box">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">📖 图书ID</label>
+                <input type="text" class="form-control" id="searchBookId" placeholder="输入图书ID">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">📘 书名</label>
+                <input type="text" class="form-control" id="searchTitle" placeholder="输入书名">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">✍️ 作者</label>
+                <input type="text" class="form-control" id="searchAuthor" placeholder="输入作者名">
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <button class="btn btn-primary" onclick="searchBooks()">
+                    <i class="fas fa-search"></i> 搜索
+                </button>
+                <button class="btn btn-secondary" onclick="clearSearch()">
+                    <i class="fas fa-redo"></i> 重置
+                </button>
+                <span class="ms-3 text-muted" id="searchInfo"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 过滤选项 -->
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <label class="form-label">所属分馆</label>
+            <select class="form-select" id="filterLibrary" onchange="filterBooks()">
+                <option value="">全部分馆</option>
+                <option th:each="lib : ${libraries}" th:value="${lib}" th:text="${lib}"></option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">状态</label>
+            <select class="form-select" id="filterStatus" onchange="filterBooks()">
+                <option value="">全部状态</option>
+                <option value="IN_LIBRARY">在馆可借</option>
+                <option value="BORROWED">已借出</option>
+                <option value="LOST">遗失</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">排序方式</label>
+            <select class="form-select" id="sortBy" onchange="sortBooks()">
+                <option value="title_asc">书名 (A-Z)</option>
+                <option value="title_desc">书名 (Z-A)</option>
+                <option value="author_asc">作者 (A-Z)</option>
+                <option value="created_desc">最新添加</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">每页显示</label>
+            <select class="form-select" id="pageSize" onchange="loadBooks()">
+                <option value="10">10本</option>
+                <option value="20">20本</option>
+                <option value="50">50本</option>
+                <option value="100">100本</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- 加载提示 -->
+    <div id="loading" class="text-center my-4" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">加载中...</span>
+        </div>
+        <p class="mt-2">正在加载图书数据...</p>
+    </div>
+
+    <!-- 图书列表容器 -->
+    <div id="bookListContainer">
+        <div class="row" id="bookCards">
+            <!-- 图书卡片会动态加载到这里 -->
+        </div>
+
+        <!-- 分页 -->
+        <nav id="pagination" class="mt-4">
+            <ul class="pagination justify-content-center">
+                <!-- 分页链接会动态生成 -->
+            </ul>
+        </nav>
+    </div>
+
+    <!-- 没有数据的提示 -->
+    <div id="noBooks" class="text-center my-5" style="display: none;">
+        <i class="fas fa-book-open fa-3x text-muted mb-3"></i>
+        <h4>未找到符合条件的图书</h4>
+        <p class="text-muted">请尝试其他搜索条件</p>
+    </div>
+</div>
+
+<!-- 图书详情模态框 -->
+<div class="modal fade" id="bookDetailModal">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailBookTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <img src="" id="detailBookCover" class="img-fluid rounded"
+                             alt="图书封面" style="max-height: 300px;">
+                    </div>
+                    <div class="col-md-8">
+                        <table class="table">
+                            <tr>
+                                <th width="30%">图书ID：</th>
+                                <td id="detailBookId"></td>
+                            </tr>
+                            <tr>
+                                <th>作者：</th>
+                                <td id="detailBookAuthor"></td>
+                            </tr>
+                            <tr>
+                                <th>ISBN：</th>
+                                <td id="detailBookIsbn"></td>
+                            </tr>
+                            <tr>
+                                <th>出版社：</th>
+                                <td id="detailBookPublisher"></td>
+                            </tr>
+                            <tr>
+                                <th>所属分馆：</th>
+                                <td id="detailBookLibrary"></td>
+                            </tr>
+                            <tr>
+                                <th>位置：</th>
+                                <td id="detailBookLocation"></td>
+                            </tr>
+                            <tr>
+                                <th>状态：</th>
+                                <td id="detailBookStatus"></td>
+                            </tr>
+                            <tr>
+                                <th>在馆副本数：</th>
+                                <td id="detailAvailableCopies"></td>
+                            </tr>
+                            <tr>
+                                <th>总副本数：</th>
+                                <td id="detailTotalCopies"></td>
+                            </tr>
+                            <tr>
+                                <th>添加时间：</th>
+                                <td id="detailCreatedTime"></td>
+                            </tr>
+                            <tr>
+                                <th>最后更新：</th>
+                                <td id="detailModifiedTime"></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="mt-3" id="detailBookDescription">
+                    <!-- 图书描述 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <!-- 只有管理员可以编辑 -->
+                <button type="button" class="btn btn-primary"
+                        th:if="${#authorization.expression('hasAnyRole(''LIB_ADMIN'', ''SYS_ADMIN'')')}"
+                        id="detailEditBtn">
+                    <i class="fas fa-edit"></i> 编辑图书
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let currentPage = 1;
+    let totalPages = 1;
+    let currentBooks = [];
+    let allBooks = [];
+
+    // 页面加载时获取所有图书
+    document.addEventListener('DOMContentLoaded', function() {
+        loadBooks();
+    });
+
+    // 加载图书数据
+    function loadBooks(page = 1) {
+        currentPage = page;
+
+        // 显示加载提示
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('bookListContainer').style.display = 'none';
+        document.getElementById('noBooks').style.display = 'none';
+
+        // 获取搜索条件
+        const bookId = document.getElementById('searchBookId').value.trim();
+        const title = document.getElementById('searchTitle').value.trim();
+        const author = document.getElementById('searchAuthor').value.trim();
+        const library = document.getElementById('filterLibrary').value;
+        const status = document.getElementById('filterStatus').value;
+        const pageSize = document.getElementById('pageSize').value;
+        const sortBy = document.getElementById('sortBy').value;
+
+        // 构建查询参数
+        let params = new URLSearchParams();
+        if (bookId) params.append('bookId', bookId);
+        if (title) params.append('title', title);
+        if (author) params.append('author', author);
+        if (library) params.append('libraryId', library);
+        if (status) params.append('status', status);
+        params.append('page', page);
+        params.append('size', pageSize);
+        params.append('sort', sortBy);
+
+        // 发送请求
+        fetch('/library/book-list/search?' + params.toString())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('网络响应错误: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    allBooks = data.books || [];
+                    currentBooks = allBooks;
+                    totalPages = data.totalPages || 1;
+
+                    displayBooks();
+                    updatePagination();
+                    updateSearchInfo(data.totalElements || 0);
+                } else {
+                    showError(data.message || '加载失败');
+                }
+            })
+            .catch(error => {
+                console.error('加载图书失败:', error);
+                showError('加载失败: ' + error.message);
+            })
+            .finally(() => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('bookListContainer').style.display = 'block';
+            });
+    }
+
+    // 显示图书卡片 - 修复版本
+function displayBooks() {
+    const container = document.getElementById('bookCards');
+
+    if (currentBooks.length === 0) {
+        document.getElementById('noBooks').style.display = 'block';
+        container.innerHTML = '';
+        return;
+    }
+
+    document.getElementById('noBooks').style.display = 'none';
+
+    let html = '';
+    currentBooks.forEach(book => {
+        // 确保bookId存在且有效
+        const bookId = book.bookId || book.book_id || '';
+        if (!bookId) {
+            console.error('❌ 图书缺少ID:', book);
+            return;
+        }
+
+        const title = book.title || '无标题';
+        const author = book.author || '未知作者';
+        const isbn = book.isbn || '无';
+        const libraryId = book.libraryId || book.library_id || '未指定';
+        const availableCopies = book.availableCopies || 0;
+        const totalCopies = book.totalCopies || 0;
+
+        // 确定状态标签
+        let statusBadge = '';
+        let status = book.status || 'UNKNOWN';
+
+        if (status === 'IN_LIBRARY') {
+            statusBadge = '<span class="badge bg-success">在馆可借</span>';
+        } else if (status === 'BORROWED') {
+            statusBadge = '<span class="badge bg-danger">已借出</span>';
+        } else if (status === 'LOST') {
+            statusBadge = '<span class="badge bg-secondary">遗失</span>';
+        } else {
+            statusBadge = '<span class="badge bg-warning">处理中</span>';
+        }
+
+        html += `
+        <div class="col-md-4 col-lg-3 mb-4">
+            <div class="card book-card h-100" data-book-id="${bookId}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="card-title text-truncate" title="${title}">
+                            ${title}
+                        </h6>
+                        ${statusBadge}
+                    </div>
+                    <p class="card-text text-muted small">
+                        <i class="fas fa-user"></i> ${author}
+                    </p>
+                    <p class="card-text small">
+                        <i class="fas fa-id-card"></i> <strong>ID:</strong> ${bookId}
+                    </p>
+                    <p class="card-text small">
+                        <i class="fas fa-barcode"></i> <strong>ISBN:</strong> ${isbn}
+                    </p>
+                    <p class="card-text small">
+                        <i class="fas fa-building"></i> <strong>分馆:</strong> ${libraryId}
+                    </p>
+                    <p class="card-text small">
+                        <i class="fas fa-copy"></i> <strong>可借:</strong> ${availableCopies}/${totalCopies}
+                    </p>
+                </div>
+                <div class="card-footer bg-transparent border-top-0">
+                    <div class="d-flex justify-content-between">
+                        <button class="btn btn-sm btn-outline-primary"
+                                onclick="showBookDetail('${bookId}')"
+                                data-book-id="${bookId}">
+                            <i class="fas fa-info-circle"></i> 详情
+                        </button>
+                        <button class="btn btn-sm btn-success"
+                                ${availableCopies > 0 ? '' : 'disabled'}
+                                onclick="borrowBook('${bookId}')"
+                                data-book-id="${bookId}"
+                                title="${availableCopies > 0 ? '借阅此书' : '无可借副本'}">
+                            <i class="fas fa-book-reader"></i> 借阅
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+    // 更新分页
+    function updatePagination() {
+        const pagination = document.getElementById('pagination');
+
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+
+        let html = '<ul class="pagination justify-content-center">';
+
+        // 上一页按钮
+        if (currentPage > 1) {
+            html += `
+            <li class="page-item">
+                <a class="page-link" href="javascript:void(0)" onclick="loadBooks(${currentPage - 1})">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+            </li>`;
+        }
+
+        // 页码按钮
+        const startPage = Math.max(1, currentPage - 2);
+        const endPage = Math.min(totalPages, currentPage + 2);
+
+        for (let i = startPage; i <= endPage; i++) {
+            if (i === currentPage) {
+                html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+            } else {
+                html += `
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0)" onclick="loadBooks(${i})">${i}</a>
+                </li>`;
+            }
+        }
+
+        // 下一页按钮
+        if (currentPage < totalPages) {
+            html += `
+            <li class="page-item">
+                <a class="page-link" href="javascript:void(0)" onclick="loadBooks(${currentPage + 1})">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+            </li>`;
+        }
+
+        html += '</ul>';
+        pagination.innerHTML = html;
+    }
+
+    // 更新搜索信息
+    function updateSearchInfo(total) {
+        const bookId = document.getElementById('searchBookId').value.trim();
+        const title = document.getElementById('searchTitle').value.trim();
+        const author = document.getElementById('searchAuthor').value.trim();
+
+        let info = `找到 ${total} 本图书`;
+
+        if (bookId || title || author) {
+            info += ' (';
+            const conditions = [];
+            if (bookId) conditions.push(`ID: ${bookId}`);
+            if (title) conditions.push(`书名: ${title}`);
+            if (author) conditions.push(`作者: ${author}`);
+            info += conditions.join(', ');
+            info += ')';
+        }
+
+        document.getElementById('searchInfo').textContent = info;
+    }
+
+    // 搜索图书
+    function searchBooks() {
+    const bookId = document.getElementById('searchBookId').value.trim();
+    const title = document.getElementById('searchTitle').value.trim();
+    const author = document.getElementById('searchAuthor').value.trim();
+
+    // 验证至少有一个搜索条件
+    if (!bookId && !title && !author) {
+        alert('请输入至少一个搜索条件（图书ID、书名或作者）');
+        return;
+    }
+
+    loadBooks(1);
+}
+
+    // 清空搜索
+    function clearSearch() {
+        document.getElementById('searchBookId').value = '';
+        document.getElementById('searchTitle').value = '';
+        document.getElementById('searchAuthor').value = '';
+        document.getElementById('filterLibrary').value = '';
+        document.getElementById('filterStatus').value = '';
+        document.getElementById('sortBy').value = 'title_asc';
+
+        loadBooks(1);
+    }
+
+    // 过滤图书
+    function filterBooks() {
+        loadBooks(1);
+    }
+
+    // 排序图书
+    function sortBooks() {
+        loadBooks(currentPage);
+    }
+
+    // 显示错误
+    function showError(message) {
+        const container = document.getElementById('bookCards');
+        container.innerHTML = `
+        <div class="col-12">
+            <div class="alert alert-danger text-center">
+                <i class="fas fa-exclamation-triangle"></i>
+                ${message}
+            </div>
+        </div>`;
+    }
+
+    // 验证图书ID传递
+function validateBookId(bookId, action) {
+    console.log(`🔍 ${action} - 验证图书ID:`, {
+        bookId: bookId,
+        type: typeof bookId,
+        length: bookId ? bookId.length : 0,
+        trimmed: bookId ? bookId.trim() : ''
+    });
+
+    if (!bookId || bookId === 'undefined' || bookId === 'null') {
+        console.error(`❌ ${action} - 无效图书ID:`, bookId);
+
+        // 尝试从按钮的data属性获取
+        const clickedButton = event?.target;
+        if (clickedButton) {
+            const dataBookId = clickedButton.getAttribute('data-book-id');
+            console.log('🔄 尝试从data属性获取:', dataBookId);
+            if (dataBookId && dataBookId !== 'undefined') {
+                return dataBookId;
+            }
+        }
+
+        // 尝试从最近的卡片获取
+        const card = clickedButton?.closest('.book-card');
+        if (card) {
+            const cardBookId = card.getAttribute('data-book-id');
+            console.log('🔄 尝试从卡片获取:', cardBookId);
+            if (cardBookId && cardBookId !== 'undefined') {
+                return cardBookId;
+            }
+        }
+
+        alert('错误：无法获取图书ID，请刷新页面重试');
+        return null;
+    }
+
+    return bookId.trim();
+}
+
+// 修改showBookDetail函数
+function showBookDetail(bookId) {
+    console.log('📖 showBookDetail被调用，原始参数:', bookId);
+
+    // 验证并获取正确的图书ID
+    const validatedBookId = validateBookId(bookId, '详情');
+    if (!validatedBookId) return;
+
+    console.log('✅ 使用图书ID:', validatedBookId);
+
+    // 显示加载状态
+    const modalTitle = document.getElementById('detailBookTitle');
+    modalTitle.textContent = '加载中...';
+
+    fetch(`/library/book-list/detail/${encodeURIComponent(validatedBookId)}`)
+        .then(response => {
+            console.log('📡 API响应状态:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('📦 API响应数据:', data);
+
+            if (data.success && data.book) {
+                const book = data.book;
+
+                // 填充模态框内容
+                document.getElementById('detailBookTitle').textContent = book.title || '无标题';
+                document.getElementById('detailBookId').textContent = book.bookId || validatedBookId;
+                // ... 其他字段填充代码 ...
+
+                // 显示模态框
+                new bootstrap.Modal(document.getElementById('bookDetailModal')).show();
+
+            } else {
+                console.error('❌ API返回失败:', data);
+                alert('获取详情失败: ' + (data.message || data.error || '未知错误'));
+            }
+        })
+        .catch(error => {
+            console.error('❌ 获取详情失败:', error);
+            alert('获取详情失败: ' + error.message);
+        });
+}
+
+// 修改borrowBook函数
+function borrowBook(bookId) {
+    console.log('📚 borrowBook被调用，原始参数:', bookId);
+
+    // 验证并获取正确的图书ID
+    const validatedBookId = validateBookId(bookId, '借阅');
+    if (!validatedBookId) return;
+
+    console.log('✅ 借阅图书ID:', validatedBookId);
+
+    // 先检查可借状态
+    console.log('🔍 检查可借状态...');
+    fetch(`/library/book-list/check-available/${encodeURIComponent(validatedBookId)}`)
+        .then(response => response.json())
+        .then(checkResult => {
+            console.log('📊 可借状态结果:', checkResult);
+
+            if (!checkResult.success) {
+                alert('检查可借状态失败: ' + (checkResult.error || checkResult.message));
+                return;
+            }
+
+            if (!checkResult.hasAvailable) {
+                alert('无可借副本: ' + (checkResult.message || '该图书当前无可借副本'));
+                return;
+            }
+
+            // 确认借阅
+            if (!confirm(`确定要借阅图书 ${validatedBookId} 吗？`)) {
+                return;
+            }
+
+            console.log('📤 发送借阅请求...');
+
+            fetch(`/library/borrow/request/${encodeURIComponent(validatedBookId)}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('🎯 借阅响应:', data);
+
+                if (data.success) {
+                    alert('借阅成功！\n' + data.message);
+                    loadBooks(currentPage); // 刷新列表
+                } else {
+                    alert('借阅失败：\n' + (data.message || data.error || '未知错误'));
+                }
+            })
+            .catch(error => {
+                console.error('借阅请求失败:', error);
+                alert('借阅请求失败: ' + error.message);
+            });
+        })
+        .catch(error => {
+            console.error('检查可借状态失败:', error);
+            alert('检查可借状态失败: ' + error.message);
+        });
+}
+
+// 修复副本
+function fixAllCopies() {
+    if (confirm('确定要修复所有图书的副本状态吗？这可能需要一些时间。')) {
+        fetch('/library/book-list/fix-all-copies')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('修复失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('请求失败: ' + error.message);
+            });
+    }
+}
+
+// 在页面加载后立即添加测试按钮（临时）
+document.addEventListener('DOMContentLoaded', function() {
+    // 在搜索框后面添加测试按钮
+    const searchBox = document.querySelector('.search-box .row:last-child .col-md-12');
+    if (searchBox) {
+        searchBox.innerHTML += `
+            <button class="btn btn-warning btn-sm ms-2" onclick="testDatabase()">
+                <i class="fas fa-database"></i> 测试数据库
+            </button>
+            <button class="btn btn-info btn-sm ms-2" onclick="fixAllCopies()">
+                <i class="fas fa-tools"></i> 修复副本
+            </button>
+        `;
+    }
+});
+
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>数据冲突日报</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .header { background: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .stat-box { background: white; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; text-align: center; }
+        .stat-value { font-size: 24px; font-weight: bold; }
+        .stat-label { color: #6c757d; font-size: 14px; }
+        .table-stats { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .table-stats th, .table-stats td { border: 1px solid #dee2e6; padding: 8px; text-align: left; }
+        .button { display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h2>📊 数据冲突日报</h2>
+    <p th:text="${applicationName} + ' - ' + ${reportDate}"></p>
+</div>
+
+<div class="stats">
+    <div class="stat-box">
+        <div class="stat-value" th:text="${totalConflicts}">0</div>
+        <div class="stat-label">总冲突数</div>
+    </div>
+    <div class="stat-box" style="border-left: 4px solid #dc3545;">
+        <div class="stat-value" th:text="${unresolvedCount}">0</div>
+        <div class="stat-label">未处理冲突</div>
+    </div>
+    <div class="stat-box" style="border-left: 4px solid #28a745;">
+        <div class="stat-value" th:text="${resolvedCount}">0</div>
+        <div class="stat-label">已处理冲突</div>
+    </div>
+</div>
+
+<h3>📋 按表统计</h3>
+<table class="table-stats" th:if="${tableStats} and ${!tableStats.isEmpty()}">
+    <thead>
+    <tr>
+        <th>表名</th>
+        <th>冲突数量</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="entry : ${tableStats}">
+        <td th:text="${entry.key}"></td>
+        <td th:text="${entry.value}"></td>
+    </tr>
+    </tbody>
+</table>
+<p th:unless="${tableStats} and ${!tableStats.isEmpty()}">暂无按表统计数据</p>
+
+<div style="margin: 30px 0;">
+    <a th:href="${systemUrl} + '/conflicts-page'" class="button">
+        查看详细冲突列表
+    </a>
+</div>
+
+<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6; font-size: 12px; color: #6c757d;">
+    <p>此报告由系统自动生成，每日发送一次。</p>
+    <p>如需调整接收频率或取消订阅，请联系系统管理员。</p>
+</div>
+</body>
+</html>

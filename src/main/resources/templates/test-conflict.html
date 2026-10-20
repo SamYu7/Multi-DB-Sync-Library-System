@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <title>图书管理系统 - 冲突测试</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#" th:href="@{/}">图书管理系统</a>
+    <div class="navbar-nav">
+      <a class="nav-link" href="#" th:href="@{/books}">图书管理</a>
+      <a class="nav-link" href="#" th:href="@{/conflicts-page}">冲突管理</a>
+      <a class="nav-link active" href="#" th:href="@{/test-conflict}">冲突测试</a>
+    </div>
+    <!-- 添加用户信息显示（需要Security） -->
+    <div class="navbar-nav" th:if="${#authorization.expression('isAuthenticated()')}">
+      <span class="nav-link text-light">
+        👤 <span th:text="${#authentication.name}">用户</span>
+      </span>
+      <form th:action="@{/logout}" method="post" class="d-inline">
+        <button type="submit" class="btn btn-outline-light btn-sm ms-2">退出</button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<div class="container mt-4">
+  <h2>冲突测试工具</h2>
+
+  <div class="row">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">制造数据冲突</h5>
+          <p class="card-text">点击下方按钮制造测试冲突，用于验证冲突检测和解决功能。</p>
+          <button class="btn btn-danger" onclick="createBookConflict()">制造图书冲突</button>
+          <button class="btn btn-warning mt-2" onclick="createCopyConflict()">制造副本冲突</button>
+          <button class="btn btn-warning mt-2" onclick="createForceConflict()">强制制造冲突</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">同步控制</h5>
+          <button class="btn btn-primary" onclick="triggerSync()">触发全量同步</button>
+          <button class="btn btn-info mt-2" onclick="checkSyncStatus()">检查同步状态</button>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-body">
+          <h5 class="card-title">数据库连接测试</h5>
+          <button class="btn btn-outline-primary btn-sm" onclick="testMySQL()">测试MySQL</button>
+          <button class="btn btn-outline-success btn-sm" onclick="testPostgreSQL()">测试PostgreSQL</button>
+          <button class="btn btn-outline-warning btn-sm" onclick="testSQLServer()">测试SQL Server</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-body">
+      <h5 class="card-title">测试结果</h5>
+      <div id="testResult" class="alert alert-info" style="display: none;"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // 基础URL
+  const BASE_URL = '/library';
+
+  function showResult(message, type = 'info') {
+      const resultDiv = document.getElementById('testResult');
+      resultDiv.innerHTML = message;
+      resultDiv.className = `alert alert-${type}`;
+      resultDiv.style.display = 'block';
+  }
+
+  function createBookConflict() {
+      fetch(`${BASE_URL}/test-conflict/create-book-conflict`, {
+          method: 'POST'
+      }).then(response => {
+          if (response.ok) {
+              showResult('图书冲突制造成功！请检查冲突管理页面。', 'success');
+          } else {
+              showResult('冲突制造失败', 'danger');
+          }
+      }).catch(error => {
+          showResult('请求失败: ' + error.message, 'danger');
+      });
+  }
+
+  function createForceConflict() {
+    fetch(`${BASE_URL}/test-conflict/create-force-conflict`, {
+        method: 'POST'
+    }).then(response => {
+        if (response.ok) {
+            showResult('强制冲突制造成功！请检查冲突管理页面和日志。', 'success');
+        } else {
+            showResult('强制冲突制造失败', 'danger');
+        }
+    }).catch(error => {
+        showResult('请求失败: ' + error.message, 'danger');
+    });
+  }
+
+  function createCopyConflict() {
+      showResult('副本冲突功能待实现', 'warning');
+  }
+
+  function triggerSync() {
+      fetch(`${BASE_URL}/sync/full`, {
+          method: 'POST'
+      }).then(response => {
+          if (response.ok) {
+              showResult('全量同步已触发', 'success');
+          } else {
+              showResult('触发同步失败', 'danger');
+          }
+      });
+  }
+
+  function checkSyncStatus() {
+      fetch(`${BASE_URL}/sync-control/status`)
+          .then(response => response.json())
+          .then(status => {
+              const statusText = `
+                  <strong>同步状态:</strong><br>
+                  实时同步: ${status.realtimeSyncEnabled ? '启用' : '禁用'}<br>
+                  所有同步: ${status.syncEnabled ? '启用' : '禁用'}<br>
+                  最后同步: ${new Date(status.lastSyncTime).toLocaleString()}
+              `;
+              showResult(statusText, 'info');
+          });
+  }
+
+  function testMySQL() {
+      fetch(`${BASE_URL}/test/mysql`)
+          .then(response => response.json())
+          .then(books => {
+              showResult(`MySQL连接成功，共 ${books.length} 本图书`, 'success');
+          })
+          .catch(error => {
+              showResult('MySQL连接失败: ' + error.message, 'danger');
+          });
+  }
+
+  function testPostgreSQL() {
+    fetch(`${BASE_URL}/test/postgresql`)
+        .then(response => response.json())
+        .then(books => {
+            showResult(`PostgreSQL连接成功，共 ${books.length} 本图书`, 'success');
+        })
+        .catch(error => {
+            showResult('PostgreSQL连接失败: ' + error.message, 'danger');
+        });
+}
+
+  function testSQLServer() {
+      fetch(`${BASE_URL}/test/sqlserver`)
+          .then(response => response.json())
+          .then(books => {
+              showResult(`SQL Server连接成功，共 ${books.length} 本图书`, 'success');
+          })
+          .catch(error => {
+              showResult('SQL Server连接失败: ' + error.message, 'danger');
+          });
+  }
+</script>
+</body>
+</html>

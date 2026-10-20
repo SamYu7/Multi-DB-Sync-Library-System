@@ -1,0 +1,67 @@
+# application-datasource.yml
+# 数据源详细配置
+mysql:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/library_system?useUnicode=true&characterEncoding=utf8&serverTimezone=GMT%2B8
+    username: app_user
+    password: userpassword
+    hikari:
+      connection-timeout: 30000
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      max-lifetime: 1200000
+
+postgresql:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/library_system
+    username: postgres
+    password: postgrespassword
+    hikari:
+      connection-timeout: 30000
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      max-lifetime: 1200000
+
+sqlserver:
+  datasource:
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    url: jdbc:sqlserver://localhost:1433;databaseName=library_system;encrypt=true;trustServerCertificate=true
+    username: sa
+    password: SqlServer123!
+    hikari:
+      connection-timeout: 30000
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      max-lifetime: 1200000
+
+# 邮件配置 - 注意：这是顶级配置，与上面的数据源配置平级
+spring:
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: 1011159957@qq.com
+    password: sxiaqoyztxembcee  # QQ邮箱授权码
+    protocol: smtp
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+library:
+  email:
+    enabled: true
+    admin-email: 1011159957@qq.com
+    from-email: 1011159957@qq.com
+    conflict-subject: "[图书管理系统] 数据同步冲突告警"
+    conflict-notification-enabled: true

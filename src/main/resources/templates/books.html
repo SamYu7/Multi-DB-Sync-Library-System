@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>图书管理系统 - 图书管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/library/">图书管理系统</a>
+        <div class="navbar-nav me-auto">
+            <a class="nav-link" href="/library/book-list">图书列表</a>
+            <a class="nav-link" href="/library/books">图书管理</a>
+            <a class="nav-link" href="/library/conflicts-page">冲突管理</a>
+            <a class="nav-link" href="/library/test-conflict">冲突测试</a>
+        </div>
+        <div class="navbar-nav">
+            <span class="nav-link text-light">
+                👤 欢迎，<span th:text="${#authentication.name}">用户</span>
+            </span>
+            <form th:action="@{/logout}" method="post" class="d-inline">
+                <button type="submit" class="btn btn-outline-light btn-sm">退出登录</button>
+            </form>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <h2>图书管理</h2>
+
+
+    <!-- 搜索和添加按钮 -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <input type="text" id="searchKeyword" class="form-control" placeholder="输入关键词搜索...">
+        </div>
+        <div class="col-md-6 text-end">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addBookModal">
+                <i class="fas fa-plus"></i> 添加图书
+            </button>
+
+            <!-- 批量删除按钮 - 仅管理员可见 -->
+            <button class="btn btn-danger" th:if="${#authorization.expression('hasAnyRole(''LIB_ADMIN'', ''SYS_ADMIN'')')}"
+                    onclick="showBulkDelete()">
+                <i class="fas fa-trash-alt"></i> 批量删除
+            </button>
+
+            <!-- 检测冲突按钮 - 仅管理员可见 -->
+            <button class="btn btn-info" th:if="${#authorization.expression('hasAnyRole(''LIB_ADMIN'', ''SYS_ADMIN'')')}"
+                    onclick="triggerConflictDetection()">
+                <i class="fas fa-search"></i> 检测冲突
+            </button>
+
+            <button class="btn btn-sm btn-outline-light" onclick="testEmail()">
+                <i class="fas fa-envelope"></i> 测试邮件
+            </button>
+        </div>
+    </div>
+
+    <!-- 批量删除模态框 -->
+    <div class="modal fade" id="bulkDeleteModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">批量删除图书</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>选择要删除的图书（将从所有数据库中删除）：</p>
+                    <div id="bulkDeleteList" style="max-height: 300px; overflow-y: auto;">
+                        <!-- 动态生成复选框列表 -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-danger" onclick="executeBulkDelete()">确认删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件: books.html -->
+    <!-- 替换表格部分 -->
+
+    <!-- 图书对比表格 -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class="fas fa-database"></i> 多数据库数据对比
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                    <tr>
+                        <th>图书ID</th>
+                        <th>数据库对比</th>
+                        <th>MySQL</th>
+                        <th>PostgreSQL</th>
+                        <th>SQL Server</th>
+                        <th>冲突状态</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="comparison : ${bookComparisons}">
+                        <td>
+                            <strong th:text="${comparison.bookId}"></strong>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-info"
+                                    th:data-book-id="${comparison.bookId}"
+                                    onclick="showComparison(this.getAttribute('data-book-id'))">
+                                对比详情
+                            </button>
+                        </td>
+
+                        <!-- MySQL 数据 -->
+                        <td th:with="mysqlBook=${comparison.mysqlBook}">
+                            <div th:if="${mysqlBook != null}">
+                                <div><strong th:text="${mysqlBook.title}"></strong></div>
+                                <div><small>作者: <span th:text="${mysqlBook.author} ?: '无'"></span></small></div>
+                                <div><small>ISBN: <span th:text="${mysqlBook.isbn} ?: '无'"></span></small></div>
+                                <div><small class="text-muted">版本:
+                                    <span th:if="${mysqlBook.version != null}" th:text="${mysqlBook.version}"></span>
+                                    <span th:unless="${mysqlBook.version != null}">-</span>
+                                </small></div>
+                            </div>
+                            <div th:unless="${mysqlBook != null}">
+                                <span class="badge bg-secondary">无数据</span>
+                            </div>
+                        </td>
+
+                        <!-- PostgreSQL 数据 -->
+                        <td th:with="pgBook=${comparison.postgresqlBook}">
+                            <div th:if="${pgBook != null}">
+                                <div><strong th:text="${pgBook.title}"></strong></div>
+                                <div><small>作者: <span th:text="${pgBook.author} ?: '无'"></span></small></div>
+                                <div><small>ISBN: <span th:text="${pgBook.isbn} ?: '无'"></span></small></div>
+                                <div><small class="text-muted">版本:
+                                    <span th:if="${pgBook.version != null}" th:text="${pgBook.version}"></span>
+                                    <span th:unless="${pgBook.version != null}">-</span>
+                                </small></div>
+                            </div>
+                            <div th:unless="${pgBook != null}">
+                                <span class="badge bg-secondary">无数据</span>
+                            </div>
+                        </td>
+
+                        <!-- SQL Server 数据 -->
+                        <td th:with="ssBook=${comparison.sqlserverBook}">
+                            <div th:if="${ssBook != null}">
+                                <div><strong th:text="${ssBook.title}"></strong></div>
+                                <div><small>作者: <span th:text="${ssBook.author} ?: '无'"></span></small></div>
+                                <div><small>ISBN: <span th:text="${ssBook.isbn} ?: '无'"></span></small></div>
+                                <div><small class="text-muted">版本:
+                                    <span th:if="${ssBook.version != null}" th:text="${ssBook.version}"></span>
+                                    <span th:unless="${ssBook.version != null}">-</span>
+                                </small></div>
+                            </div>
+                            <div th:unless="${ssBook != null}">
+                                <span class="badge bg-secondary">无数据</span>
+                            </div>
+                        </td>
+
+                        <!-- 冲突状态 -->
+                        <td>
+                            <span th:if="${comparison.get('hasConflict')}"
+                                  class="badge bg-danger">
+                                <i class="fas fa-exclamation-triangle"></i> 冲突
+                            </span>
+                            <span th:unless="${comparison.get('hasConflict')}"
+                                  class="badge bg-success">
+                                <i class="fas fa-check"></i> 一致
+                            </span>
+                        </td>
+
+                        <!-- 操作 -->
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <!-- 智能同步按钮 - 仅管理员可见 -->
+                                <button class="btn btn-primary"
+                                        th:if="${#authorization.expression('hasAnyRole(''LIB_ADMIN'', ''SYS_ADMIN'')')}"
+                                        th:data-book-id="${comparison.bookId}"
+                                        onclick="smartSyncBook(this.getAttribute('data-book-id'))"
+                                        title="智能同步（使用最新数据）">
+                                    <i class="fas fa-robot"></i>
+                                </button>
+
+                                <!-- 从MySQL同步 -->
+                                <button class="btn btn-success"
+                                        th:data-book-id="${comparison.bookId}"
+                                        onclick="syncFromDatabase('mysql', this.getAttribute('data-book-id'))"
+                                        title="使用MySQL数据同步">
+                                    <i class="fas fa-database"></i> MySQL
+                                </button>
+
+                                <!-- 从PostgreSQL同步 -->
+                                <button class="btn btn-info"
+                                        th:data-book-id="${comparison.bookId}"
+                                        onclick="syncFromDatabase('postgresql', this.getAttribute('data-book-id'))"
+                                        title="使用PostgreSQL数据同步">
+                                    <i class="fas fa-database"></i> PG
+                                </button>
+
+                                <!-- 从SQL Server同步 -->
+                                <button class="btn btn-warning"
+                                        th:data-book-id="${comparison.bookId}"
+                                        onclick="syncFromDatabase('sqlserver', this.getAttribute('data-book-id'))"
+                                        title="使用SQL Server数据同步">
+                                    <i class="fas fa-database"></i> SS
+                                </button>
+
+                                <!-- 删除按钮 -->
+                                <button class="btn btn-danger"
+                                        th:data-book-id="${comparison.bookId}"
+                                        th:onclick="${#authorization.expression('hasAnyRole(''LIB_ADMIN'', ''SYS_ADMIN'')')} ?
+                            'deleteBook(this.getAttribute(\'data-book-id\'))' :
+                            'alert(\'普通读者不能删除图书，请联系管理员\')'"
+                                        title="删除图书">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+
+                                <button class="btn btn-secondary"
+                                        th:data-book-id="${comparison.bookId}"
+                                        onclick="debugBook(this.getAttribute('data-book-id'))"
+                                        title="调试数据">
+                                    <i class="fas fa-bug"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 数据库统计 -->
+            <div class="row mt-3">
+                <div class="col-md-3">
+                    <div class="card text-white bg-primary">
+                        <div class="card-body text-center">
+                            <h4 th:text="${totalBooks} ?: 0">0</h4>
+                            <p>总图书数</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-success">
+                        <div class="card-body text-center">
+                            <h4 th:text="${mysqlCount} ?: 0">0</h4>
+                            <p>MySQL 数据</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-info">
+                        <div class="card-body text-center">
+                            <h4 th:text="${postgresqlCount} ?: 0">0</h4>
+                            <p>PostgreSQL 数据</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-warning">
+                        <div class="card-body text-center">
+                            <h4 th:text="${sqlserverCount} ?: 0">0</h4>
+                            <p>SQL Server 数据</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加对比详情模态框 -->
+    <div class="modal fade" id="comparisonModal">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">图书数据对比</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="comparisonContent">
+                        <!-- 动态加载对比详情 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 显示对比详情
+        function showComparison(bookId) {
+            console.log('请求对比详情:', bookId);
+            fetch('/library/books/comparison/' + bookId)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('请求失败: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('对比数据:', data);
+                    let html = `
+                        <h4>图书ID: ${data.bookId}</h4>
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>字段</th>
+                                        <th>MySQL</th>
+                                        <th>PostgreSQL</th>
+                                        <th>SQL Server</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+
+                    // 比较字段
+                    const fields = ['title', 'author', 'isbn', 'publisher', 'version'];
+                    const fieldNames = {
+                        'title': '标题',
+                        'author': '作者',
+                        'isbn': 'ISBN',
+                        'publisher': '出版社',
+                        'version': '版本'
+                    };
+
+                    for (let field of fields) {
+                        html += `<tr>
+                            <td><strong>${fieldNames[field]}</strong></td>`;
+
+                        for (let db of ['mysql', 'postgresql', 'sqlserver']) {
+                            let value = '-';
+                            if (data[db]) {
+                                if (field === 'version' && data[db][field] !== undefined) {
+                                    value = data[db][field];
+                                } else if (data[db][field] !== undefined && data[db][field] !== null) {
+                                    value = data[db][field];
+                                }
+                            }
+
+                            html += `<td>${value}</td>`;
+                        }
+
+                        html += `</tr>`;
+                    }
+
+                    html += `</tbody></table></div>`;
+
+                    if (data.hasConflict) {
+                        html += `<div class="alert alert-danger mt-3">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            检测到数据冲突！请及时处理。
+                        </div>`;
+                    }
+
+                    document.getElementById('comparisonContent').innerHTML = html;
+                    new bootstrap.Modal(document.getElementById('comparisonModal')).show();
+                })
+                .catch(error => {
+                    console.error('获取对比详情失败:', error);
+                    alert('获取对比详情失败: ' + error.message);
+                });
+        }
+
+        // 手动同步图书
+        function syncBook(bookId) {
+            if (confirm(`确定要同步图书 ${bookId} 吗？这将用MySQL的数据覆盖其他数据库。`)) {
+                fetch('/library/books/sync/' + bookId, {
+                    method: 'POST'
+                })
+                .then(response => {
+                    if (response.ok) {
+                        alert('同步成功！');
+                        location.reload();
+                    } else {
+                        response.text().then(text => {
+                            alert('同步失败: ' + text);
+                        });
+                    }
+                })
+                .catch(error => {
+                    alert('请求失败: ' + error.message);
+                });
+            }
+        }
+
+        // 手动触发冲突检测
+        function triggerConflictDetection() {
+            if (confirm('确定要触发冲突检测吗？这将对比三个数据库的所有数据。')) {
+                fetch('/library/sync/full', {
+                    method: 'POST'
+                })
+                .then(response => {
+                    if (response.ok) {
+                        alert('冲突检测已触发！页面将刷新...');
+                        setTimeout(() => {
+                            location.reload();
+                        }, 2000);
+                    } else {
+                        alert('触发失败');
+                    }
+                })
+                .catch(error => {
+                    alert('请求失败: ' + error.message);
+                });
+            }
+        }
+
+        // 原有的搜索功能保留
+        document.getElementById('searchKeyword')?.addEventListener('input', function(e) {
+            const keyword = e.target.value;
+            if (keyword.length >= 2) {
+                console.log('搜索关键词:', keyword);
+                // 可以添加搜索功能
+            }
+        });
+    </script>
+</div>
+
+<!-- 添加图书模态框 -->
+<div class="modal fade" id="addBookModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加图书</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addBookForm">
+                    <div class="mb-3">
+                        <label class="form-label">图书ID</label>
+                        <input type="text" class="form-control" name="bookId" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">书名</label>
+                        <input type="text" class="form-control" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">作者</label>
+                        <input type="text" class="form-control" name="author">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ISBN</label>
+                        <input type="text" class="form-control" name="isbn">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">出版社</label>
+                        <input type="text" class="form-control" name="publisher">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">所属分馆</label>
+                        <input type="text" class="form-control" name="libraryId">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addBook()">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // 添加图书
+    function addBook() {
+    const form = document.getElementById('addBookForm');
+    const formData = new FormData(form);
+    const book = {};
+    for (let [key, value] of formData.entries()) {
+        book[key] = value;
+    }
+
+    // 显示加载
+    const submitBtn = document.querySelector('#addBookModal .btn-primary');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 添加中...';
+    submitBtn.disabled = true;
+
+    fetch('/library/books', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(book)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            // 关闭模态框
+            bootstrap.Modal.getInstance(document.getElementById('addBookModal')).hide();
+            // 重置表单
+            form.reset();
+            // 刷新页面
+            location.reload();
+        } else {
+            alert('添加失败: ' + (data.message || data.error));
+        }
+    })
+    .catch(error => {
+        alert('请求失败: ' + error.message);
+    })
+    .finally(() => {
+        // 恢复按钮
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    });
+}
+
+    // 搜索图书
+    document.getElementById('searchKeyword').addEventListener('input', function(e) {
+        const keyword = e.target.value;
+        if (keyword.length >= 2) {
+            fetch(`/library/books/search?keyword=${keyword}`)
+                .then(response => response.json())
+                .then(books => {
+                    const tbody = document.getElementById('bookTableBody');
+                    tbody.innerHTML = '';
+                    books.forEach(book => {
+                        const row = `<tr>
+                            <td>${book.bookId}</td>
+                            <td>${book.title}</td>
+                            <td>${book.author}</td>
+                            <td>${book.isbn}</td>
+                            <td>${book.publisher}</td>
+                            <td>${book.libraryId}</td>
+                            <td>
+                                <button class="btn btn-sm btn-warning" data-book-id="${book.bookId}" onclick="editBook(this.getAttribute('data-book-id'))">编辑</button>
+                                <button class="btn btn-sm btn-danger" data-book-id="${book.bookId}" onclick="deleteBook(this.getAttribute('data-book-id'))">删除</button>
+                            </td>
+                        </tr>`;
+                        tbody.innerHTML += row;
+                    });
+                });
+        }
+    });
+
+    function editBook(bookId) {
+        alert('编辑图书: ' + bookId);
+    }
+
+    /**
+ * 删除图书（从所有数据库删除）
+ */
+function deleteBook(bookId) {
+    const bookElement = document.querySelector(`[data-book-id="${bookId}"]`);
+    let bookTitle = bookId;
+
+    // 尝试获取图书标题
+    if (bookElement) {
+        const row = bookElement.closest('tr');
+        if (row) {
+            const titleCell = row.querySelector('td:nth-child(3) strong');
+            if (titleCell) {
+                bookTitle = titleCell.textContent;
+            }
+        }
+    }
+
+    if (confirm(`⚠️ 确定要删除图书吗？\n\n图书: ${bookTitle}\nID: ${bookId}\n\n这将从三个数据库中同时删除！`)) {
+        // 显示加载状态
+        const originalButton = event.target;
+        const originalText = originalButton.innerHTML;
+        originalButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 删除中...';
+        originalButton.disabled = true;
+
+        fetch(`/library/books/${bookId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('删除响应:', data);
+
+            if (data.success) {
+                // 成功删除
+                let message = '✅ ' + data.message;
+                if (data.dbResults) {
+                    message += '\n\n详细结果:';
+                    for (const [db, result] of Object.entries(data.dbResults)) {
+                        message += `\n${db}: ${result.status} - ${result.message}`;
+                        if (result.bookInfo) {
+                            message += ` (${result.bookInfo.title})`;
+                        }
+                    }
+                }
+                alert(message);
+                location.reload();
+
+            } else {
+                // 删除失败
+                let errorMessage = '❌ ' + (data.message || data.error || '删除失败');
+
+                // 如果有详细结果，显示详细信息
+                if (data.dbResults) {
+                    errorMessage += '\n\n详细结果:';
+                    for (const [db, result] of Object.entries(data.dbResults)) {
+                        errorMessage += `\n${db}: ${result.status}`;
+                        if (result.message) {
+                            errorMessage += ` - ${result.message}`;
+                        }
+                        if (result.error) {
+                            errorMessage += ` (错误: ${result.error})`;
+                        }
+                    }
+                }
+
+                alert(errorMessage);
+
+                // 如果是部分删除成功，提供重试选项
+                if (data.successfullyDeleted && data.successfullyDeleted.length > 0) {
+                    if (confirm('部分删除成功。是否重新加载页面查看当前状态？')) {
+                        location.reload();
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('删除请求失败:', error);
+            alert('❌ 删除请求失败: ' + error.message);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            originalButton.innerHTML = originalText;
+            originalButton.disabled = false;
+        });
+    }
+}
+
+    /**
+ * 智能同步（使用最新修改时间的数据）
+ */
+function smartSyncBook(bookId) {
+    if (confirm(`确定要智能同步图书 ${bookId} 吗？\n系统将自动选择最新修改的数据作为源。`)) {
+        fetch('/library/books/sync/smart/' + bookId, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('智能同步成功！\n' + data.message);
+                location.reload();
+            } else {
+                alert('智能同步失败：' + (data.message || '未知错误'));
+            }
+        })
+        .catch(error => {
+            alert('请求失败: ' + error.message);
+        });
+    }
+}
+
+/**
+ * 从指定数据库同步
+ */
+function syncFromDatabase(sourceDb, bookId) {
+    const dbNames = {
+        'mysql': 'MySQL',
+        'postgresql': 'PostgreSQL',
+        'sqlserver': 'SQL Server'
+    };
+
+    const dbName = dbNames[sourceDb] || sourceDb;
+
+    if (confirm(`确定要用 ${dbName} 的数据同步图书 ${bookId} 吗？\n这将覆盖其他数据库的数据。`)) {
+        fetch(`/library/books/sync/from/${sourceDb}/${bookId}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`${dbName} 同步成功！\n` + data.message);
+                location.reload();
+            } else {
+                alert(`${dbName} 同步失败：` + (data.message || '未知错误'));
+            }
+        })
+        .catch(error => {
+            alert('请求失败: ' + error.message);
+        });
+    }
+}
+
+/**
+ * 显示更多同步选项的模态框
+ */
+function showSyncOptions(bookId) {
+    const modalHtml = `
+        <div class="modal fade" id="syncOptionsModal">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">同步选项 - 图书 ${bookId}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" onclick="smartSyncBook('${bookId}'); bootstrap.Modal.getInstance(document.getElementById('syncOptionsModal')).hide();">
+                                <i class="fas fa-robot"></i> 智能同步（自动选择最新数据）
+                            </button>
+
+                            <hr>
+
+                            <button class="btn btn-success" onclick="syncFromDatabase('mysql', '${bookId}'); bootstrap.Modal.getInstance(document.getElementById('syncOptionsModal')).hide();">
+                                <i class="fas fa-database"></i> 使用 MySQL 数据同步
+                            </button>
+
+                            <button class="btn btn-info" onclick="syncFromDatabase('postgresql', '${bookId}'); bootstrap.Modal.getInstance(document.getElementById('syncOptionsModal')).hide();">
+                                <i class="fas fa-database"></i> 使用 PostgreSQL 数据同步
+                            </button>
+
+                            <button class="btn btn-warning" onclick="syncFromDatabase('sqlserver', '${bookId}'); bootstrap.Modal.getInstance(document.getElementById('syncOptionsModal')).hide();">
+                                <i class="fas fa-database"></i> 使用 SQL Server 数据同步
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 创建并显示模态框
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalHtml;
+    document.body.appendChild(modalContainer);
+
+    const modal = new bootstrap.Modal(document.getElementById('syncOptionsModal'));
+    modal.show();
+
+    // 模态框关闭后清理
+    document.getElementById('syncOptionsModal').addEventListener('hidden.bs.modal', function() {
+        modalContainer.remove();
+    });
+}
+    /**
+ * 删除图书（从所有数据库删除）
+ */
+function deleteBook(bookId) {
+    const bookElement = document.querySelector(`[data-book-id="${bookId}"]`);
+    let bookTitle = bookId;
+
+    // 尝试获取图书标题
+    if (bookElement) {
+        const row = bookElement.closest('tr');
+        if (row) {
+            const titleCell = row.querySelector('td:nth-child(3) strong');
+            if (titleCell) {
+                bookTitle = titleCell.textContent;
+            }
+        }
+    }
+
+    if (confirm(`确定要删除图书 ${bookTitle} (${bookId}) 吗？\n⚠️ 这将从三个数据库中同时删除！`)) {
+        // 显示加载状态
+        const originalButton = event.target;
+        const originalText = originalButton.innerHTML;
+        originalButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> 删除中...';
+        originalButton.disabled = true;
+
+        fetch(`/library/books/${bookId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ ' + data.message);
+                location.reload();
+            } else {
+                // 如果是部分删除成功，让用户选择是否继续
+                if (data.deletedFrom && data.deletedFrom.length > 0) {
+                    const deletedFrom = data.deletedFrom.join(', ');
+                    const failedOn = data.failedOn ? data.failedOn.join('; ') : '未知错误';
+
+                    if (confirm(`⚠️ 部分删除成功！\n\n已从 ${deletedFrom} 删除\n失败: ${failedOn}\n\n是否重试删除剩余数据？`)) {
+                        // 重试删除
+                        retryDelete(bookId, data.deleteResults);
+                    } else {
+                        // 刷新页面显示当前状态
+                        location.reload();
+                    }
+                } else {
+                    alert('❌ 删除失败: ' + (data.message || data.error || '未知错误'));
+                }
+            }
+        })
+        .catch(error => {
+            console.error('删除失败:', error);
+            alert('❌ 删除请求失败: ' + error.message);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            originalButton.innerHTML = originalText;
+            originalButton.disabled = false;
+        });
+    }
+}
+
+/**
+ * 重试删除（针对部分删除失败的情况）
+ */
+function retryDelete(bookId, deleteResults) {
+    // 找出哪些数据库删除失败了
+    const failedDbs = [];
+    for (const [db, success] of Object.entries(deleteResults)) {
+        if (!success) {
+            failedDbs.push(db);
+        }
+    }
+
+    if (failedDbs.length === 0) {
+        alert('没有需要重试的数据库');
+        return;
+    }
+
+    // 为每个失败的数据库单独尝试删除
+    const promises = failedDbs.map(db => {
+        return fetch(`/library/books/delete-from/${db}/${bookId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => ({
+            db: db,
+            success: data.success || false,
+            message: data.message || '未知错误'
+        }))
+        .catch(error => ({
+            db: db,
+            success: false,
+            message: error.message
+        }));
+    });
+
+    // 显示加载提示
+    alert(`正在重试删除 ${failedDbs.join(', ')} 的数据...`);
+
+    Promise.all(promises)
+        .then(results => {
+            const successDbs = results.filter(r => r.success).map(r => r.db);
+            const failedDbs = results.filter(r => !r.success);
+
+            if (failedDbs.length === 0) {
+                alert('🎉 重试成功！所有数据库删除完成。');
+                location.reload();
+            } else {
+                const failedMessages = failedDbs.map(f => `${f.db}: ${f.message}`).join('\n');
+                alert(`⚠️ 重试结果：\n成功: ${successDbs.join(', ') || '无'}\n失败:\n${failedMessages}`);
+                location.reload();
+            }
+        });
+}
+
+/**
+ * 从特定数据库删除图书（用于重试）
+ * 需要添加这个API端点
+ */
+function deleteFromDatabase(dbName, bookId) {
+    return fetch(`/library/books/delete-from/${dbName}/${bookId}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json());
+}
+    // 批量删除相关函数
+function showBulkDelete() {
+    // 收集所有图书ID和标题
+    const bookList = [];
+    const checkboxes = document.querySelectorAll('input[name="bulkDeleteBook"]');
+
+    if (checkboxes.length > 0) {
+        // 如果已有复选框，直接显示
+        new bootstrap.Modal(document.getElementById('bulkDeleteModal')).show();
+        return;
+    }
+
+    // 从表格中获取所有图书
+    const rows = document.querySelectorAll('table tbody tr');
+    if (rows.length === 0) {
+        alert('没有可删除的图书');
+        return;
+    }
+
+    // 创建复选框列表
+    let checkboxHtml = '';
+    rows.forEach(row => {
+        const bookId = row.querySelector('td:first-child strong')?.textContent;
+        const titleCell = row.querySelector('td:nth-child(3) strong')?.textContent || '无标题';
+        const authorCell = row.querySelector('td:nth-child(3) small:nth-of-type(1) span')?.textContent || '无作者';
+
+        if (bookId) {
+            checkboxHtml += `
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox"
+                           name="bulkDeleteBook" value="${bookId}" id="book_${bookId}">
+                    <label class="form-check-label" for="book_${bookId}">
+                        <strong>${bookId}</strong> - ${titleCell} (${authorCell})
+                    </label>
+                </div>
+            `;
+        }
+    });
+
+    if (!checkboxHtml) {
+        alert('未找到可删除的图书');
+        return;
+    }
+
+    document.getElementById('bulkDeleteList').innerHTML = checkboxHtml;
+    new bootstrap.Modal(document.getElementById('bulkDeleteModal')).show();
+}
+
+function executeBulkDelete() {
+    const selectedBooks = [];
+    document.querySelectorAll('input[name="bulkDeleteBook"]:checked').forEach(checkbox => {
+        selectedBooks.push(checkbox.value);
+    });
+
+    if (selectedBooks.length === 0) {
+        alert('请至少选择一本图书');
+        return;
+    }
+
+    if (!confirm(`确定要删除选中的 ${selectedBooks.length} 本图书吗？\n⚠️ 这将从所有数据库中删除！`)) {
+        return;
+    }
+
+    // 禁用按钮
+    const deleteBtn = document.querySelector('#bulkDeleteModal .btn-danger');
+    const originalText = deleteBtn.innerHTML;
+    deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 删除中...';
+    deleteBtn.disabled = true;
+
+    // 执行批量删除
+    fetch('/library/books/batch', {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(selectedBooks)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ ${data.message}`);
+            // 关闭模态框
+            bootstrap.Modal.getInstance(document.getElementById('bulkDeleteModal')).hide();
+            // 刷新页面
+            location.reload();
+        } else {
+            alert(`❌ 批量删除失败: ${data.error || data.message}`);
+        }
+    })
+    .catch(error => {
+        alert('❌ 请求失败: ' + error.message);
+    })
+    .finally(() => {
+        // 恢复按钮
+        deleteBtn.innerHTML = originalText;
+        deleteBtn.disabled = false;
+    });
+}
+</script>
+
+<!-- 添加调试结果模态框 -->
+<div class="modal fade" id="debugModal">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">调试信息</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="debugResult" class="bg-dark text-light p-3"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 调试函数
+    function debugBook(bookId) {
+        fetch(`/library/books/debug/${bookId}`)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('debugResult').textContent =
+                    JSON.stringify(data, null, 2);
+                new bootstrap.Modal(document.getElementById('debugModal')).show();
+            })
+            .catch(error => {
+                alert('调试失败: ' + error.message);
+            });
+    }
+    function testEmail() {
+    if (confirm('发送测试邮件到 1011159957@qq.com？')) {
+        fetch('/library/email/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email: '1011159957@qq.com'})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ 测试邮件已发送！');
+            } else {
+                alert('❌ 发送失败: ' + (data.error || data.message));
+            }
+        })
+        .catch(e => alert('请求失败: ' + e.message));
+    }
+}
+</script>
+</body>
+</html>
